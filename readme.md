@@ -16,7 +16,6 @@ the master key will always start with `$HAPROCRATES-MASTER$-` when successfully 
 <!--and all passwords will start with `$HPCT$-` when successfully -->
 <!--passwords arent decrypted, they are computed. so this shouldnt be necessary-->
 
-
 <!--# Usage-->
 
 # Installation
