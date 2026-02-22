@@ -1,19 +1,23 @@
 use crate::{
     cli::get_user_input,
-    constant::{KEY_SIZE, MASTER_SIZE, NONCE_SIZE, SALT_SIZE},
+    constant::{KEY_SIZE, NONCE_SIZE, SALT_SIZE},
+    master::MasterKey,
 };
+use base64::{
+    Engine,
+    prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD},
+};
+
 use aes_gcm::{
     AeadCore, Aes256Gcm, Key, Nonce,
-    aead::{
-        Aead, KeyInit, OsRng,
-        rand_core::{CryptoRngCore, RngCore},
-    },
+    aead::{Aead, KeyInit, OsRng, rand_core::RngCore},
 };
 use anyhow::Result;
-use argon2::Argon2;
+use argon2::password_hash::PasswordHasher;
+use argon2::{Argon2, password_hash::SaltString};
 use std::{
     fs::{File, rename},
-    io::{Read, Write, stdin, stdout},
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -22,8 +26,22 @@ type Password = [u8; KEY_SIZE];
 type PasswordSalt = [u8; SALT_SIZE];
 
 // handles central hashing function and supporting cryptographic operations
-pub fn hash_password(site: &str, username: &str, secret: &[u8]) -> String {
-    todo!()
+pub fn hash_password(content: &[u8], salt: &[u8]) -> Result<String> {
+    // Argon2::default().hash_password(content, salt)?.to_string()
+    let salt = SaltString::from_b64(&base64_encode(salt))
+        .map_err(|e| anyhow::anyhow!("failed to encode salt as base64: {e}"))?;
+    Ok(Argon2::default()
+        .hash_password(
+            content,
+            &salt, // &SaltString::encode_b64(&salt)
+                  //     .map_err(|e| anyhow::anyhow!("failed to encode salt as base64: {e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("failed to hash password: {e}"))?
+        .serialize()
+        .to_string())
+}
+pub fn base64_encode(bytes: &[u8]) -> String {
+    BASE64_STANDARD_NO_PAD.encode(bytes)
 }
 pub fn generate_random_series(size: usize) -> Vec<u8> {
     let mut bytes = vec![0u8; size];
@@ -109,17 +127,22 @@ pub fn generate_random_series(size: usize) -> Vec<u8> {
 //     Ok((salt, nonce))
 // }
 /// encryption format password-hash:nonce:encrypted_data
-pub struct EncryptedFileHandle {
+
+pub struct CryptoFileHandle {
     path: PathBuf,
     password: String,
     // salt: Salt,
     // nonce: KeyNonce,
 }
-impl EncryptedFileHandle {
+impl CryptoFileHandle {
     /// create a new encrypted file
-    pub fn create(path: &Path) -> Result<Self> {
+    pub fn create(path: &Path, password: Option<&str>) -> Result<Self> {
         // let salt = Self::new_salt();
-        let password = get_user_input(&format!("enter new password for \"{path:?}\""))?;
+        let password = if let Some(pw) = password {
+            pw.to_string()
+        } else {
+            get_user_input(&format!("enter new password for \"{path:?}\""))?
+        };
         Ok(Self {
             password,
             // salt,
@@ -127,13 +150,16 @@ impl EncryptedFileHandle {
             // nonce: Self::new_nonce(),
         })
     }
-    pub fn decrypt(path: &Path) -> Result<(Self, Vec<u8>)> {
+    pub fn decrypt(path: &Path, password: Option<&str>) -> Result<(Self, Vec<u8>)> {
+        let password = if let Some(pw) = password {
+            pw.to_string()
+        } else {
+            get_user_input(&format!("enter password for \"{path:?}\""))?
+        };
         let mut file = File::open(path)?;
         let mut file_data = Vec::new();
         file.read_to_end(&mut file_data)?;
         let (salt, nonce, encrypted) = Self::parse(file_data);
-        // let password = Self::prompt_password(, &salt)?;
-        let password = get_user_input(&format!("enter password for \"{path:?}\""))?;
         let handle = Self {
             path: path.to_owned(),
             password,
@@ -141,7 +167,7 @@ impl EncryptedFileHandle {
         let decrypted = handle.decrypt_data(encrypted, &nonce, &salt)?;
         Ok((handle, decrypted))
     }
-    pub fn encrypt(self, decrypted: Vec<u8>) -> Result<()> {
+    pub fn encrypt(self, decrypted: &[u8]) -> Result<()> {
         let nonce = Self::new_nonce();
         let salt = Self::new_salt();
         let encrypted = self.encrypt_data(decrypted, &nonce, &salt)?;
@@ -149,7 +175,7 @@ impl EncryptedFileHandle {
         let tmp_path = self.path.with_added_extension("tmp");
         let mut file = File::create(&tmp_path)?;
         file.write_all(&file_data)?;
-        rename(tmp_path, self.path);
+        rename(tmp_path, self.path)?;
         Ok(())
     }
 
@@ -180,12 +206,12 @@ impl EncryptedFileHandle {
     }
     fn encrypt_data(
         &self,
-        decrypted: Vec<u8>,
+        decrypted: &[u8],
         nonce: &FileNonce,
         salt: &PasswordSalt,
     ) -> Result<Vec<u8>> {
         let cipher = Aes256Gcm::new(&self.key(salt)?);
-        cipher.encrypt(nonce, decrypted.as_ref()).map_err(|e| {
+        cipher.encrypt(nonce, decrypted).map_err(|e| {
             anyhow::anyhow!(format!("could not encrypt file \"{:?}\": {e}", self.path))
         })
     }
@@ -195,10 +221,10 @@ impl EncryptedFileHandle {
             salt,
         )?))
     }
-    fn prompt_password(msg: &str, salt: &PasswordSalt) -> Result<Password> {
-        let response = get_user_input(msg)?;
-        Self::hash_password(&response, salt)
-    }
+    // fn prompt_password(msg: &str, salt: &PasswordSalt) -> Result<Password> {
+    //     let response = get_user_input(msg)?;
+    //     Self::hash_password(&response, salt)
+    // }
     fn hash_password(plain_text: &str, salt: &PasswordSalt) -> Result<Password> {
         let mut password = [1; KEY_SIZE];
         Argon2::default()
@@ -214,6 +240,35 @@ impl EncryptedFileHandle {
     }
     fn new_nonce() -> FileNonce {
         Aes256Gcm::generate_nonce(OsRng)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use std::fs::{create_dir_all, remove_file};
+
+    use crate::constant::TESTS_DIRECTORY;
+
+    use super::*;
+    #[test]
+    fn test_crypto_file_handle_data_integrity() -> Result<()> {
+        let tests_directory = PathBuf::from(TESTS_DIRECTORY);
+        create_dir_all(&tests_directory)?;
+        let test_file_path = tests_directory.join("crypto_file_handle_data_integrity.enc");
+        let password = Some("password123");
+        // let password = None;
+        let data = b"This is a test of the CryptoFileHandle's integrity of data during creation, encryption, and then decryption. reading back this file should be the same".to_vec();
+        let new_file = CryptoFileHandle::create(&test_file_path, password.clone())?;
+        new_file.encrypt(&data)?;
+
+        let (handle, decrypted) = CryptoFileHandle::decrypt(&test_file_path, password.clone())?;
+        assert_eq!(decrypted, data);
+        // write back read data.
+        handle.encrypt(&decrypted)?;
+        // test to see if decrypted data that has been reencrypted can then be recovered again
+        let (_, decrypted) = CryptoFileHandle::decrypt(&test_file_path, password)?;
+        assert_eq!(decrypted, data);
+        remove_file(test_file_path)?;
+        Ok(())
     }
 }
 

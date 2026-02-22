@@ -5,6 +5,7 @@ mod cli;
 mod constant;
 mod crypto;
 mod master;
+mod password_generator;
 mod storage;
 mod vault;
 fn main() -> Result<()> {

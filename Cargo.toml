@@ -7,4 +7,5 @@ edition = "2024"
 aes-gcm = { version = "0.10.3", features = ["arrayvec"] }
 anyhow = "1.0.101"
 argon2 = "0.5.3"
+base64 = "0.22.1"
 clap = { version = "4.5.59", features = ["derive"] }
