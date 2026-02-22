@@ -3,6 +3,7 @@ use crate::{
     constant::MASTER_SIZE,
     crypto::{DecryptedFile, generate_random_series},
 };
+use aes_gcm::Nonce;
 use anyhow::Result;
 use rand::{self, RngExt};
 use std::path::{Path, PathBuf};
@@ -20,5 +21,9 @@ impl Master {
             master_name: name.to_string(),
             master_data: master_data,
         })
+    }
+
+    pub fn get<'a>(&'a self) -> &'a [u8] {
+        &self.master_data
     }
 }

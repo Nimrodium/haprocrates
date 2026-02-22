@@ -3,7 +3,7 @@ use crate::constant::{
     MASTER_KEY_SALT_EXTENSION, VAULT_FILENAME,
 };
 use anyhow::Result;
-use std::{env, fs::File, path::PathBuf};
+use std::{env, fs::File, io::Read, path::PathBuf};
 
 pub struct Storage {
     /// platform specific
@@ -11,7 +11,7 @@ pub struct Storage {
     /// * Windows:  `%APPDATA%\haprocrates\`
     /// * macOS:      `~/Library/Application Support/haprocrates/`
     application_root: PathBuf,
-    ///
+    /// password in plain-text
     password: Option<String>,
 }
 impl Storage {
