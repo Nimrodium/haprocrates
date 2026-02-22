@@ -10,9 +10,6 @@ if you ARE being targeted by the government, i would advise using a different pa
 <!--# Disk State
 data is stored at `~/.local/state/haprocrates/` and contains a `vault` file, and a `secrets/` directory.-->
 
-# verification
-the master key will always start with `$HAPROCRATES-MASTER$-` when successfully decrypted, 
-
 <!--and all passwords will start with `$HPCT$-` when successfully -->
 <!--passwords arent decrypted, they are computed. so this shouldnt be necessary-->
 
@@ -108,3 +105,6 @@ path to file containing password used to decrypt disk state
 path to disk state, will override default of `~/.local/state/haprocrates/`
 - HAPROCRATES_AUTH_TIMEOUT
 time in minutes before the authentication agent dies. default is 15 minutes. setting to 0 disables the authentication agent.
+
+# Implementation Notes
+Haprocrates uses the Argon2 hashing function to compute password hashes and generates keys used to encrypt / decrypt disk files.

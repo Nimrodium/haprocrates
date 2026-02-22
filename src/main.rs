@@ -1,9 +1,14 @@
+use crate::cli::user_confirm;
+use anyhow::Result;
 use clap::Parser;
-
 mod cli;
+mod constant;
 mod crypto;
-mod database;
-fn main() {
+mod master;
+mod storage;
+mod vault;
+fn main() -> Result<()> {
     let args = cli::CliArguments::parse();
-    println!("Hello, world!");
+    println!("{}", user_confirm("Haprocrates")?);
+    Ok(())
 }
